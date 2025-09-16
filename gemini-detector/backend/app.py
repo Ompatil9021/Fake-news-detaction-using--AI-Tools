@@ -41,7 +41,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Database Models ---
+# --- Database Models (Review model is updated) ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
@@ -61,7 +61,7 @@ class Post(db.Model):
 class Review(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     rating = db.Column(db.String(50), nullable=False)
-    content = db.Column(db.Text, nullable=True)
+    content = db.Column(db.Text, nullable=True) # Comment is now optional
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
 
@@ -105,12 +105,9 @@ def check_auth():
 @app.route('/analyze-text', methods=['POST'])
 @login_required
 def analyze_text():
-    if not model: return jsonify({"error": "Gemini API is not configured"}), 500
     data = request.get_json()
     text_to_analyze = data.get('text')
     if not text_to_analyze: return jsonify({"error": "No text provided"}), 400
-
-    # --- THIS IS THE FULL, CORRECT PROMPT THAT WAS ACCIDENTALLY REMOVED ---
     prompt = f"""
     You are an AI fact-checker. Your task is to analyze the user's text and determine the factual accuracy of its core claim.
     You MUST format your entire response exactly as follows, with no extra text or conversational pleasantries:
@@ -158,6 +155,10 @@ def analyze_media():
             new_post = Post(content=f"Media file: {filename}", analysis_result=analysis, author=current_user)
             db.session.add(new_post)
             db.session.commit()
+
+            # --- ADDED FOR DEBUGGING ---
+            print(f"DEBUG: Successfully saved media post ID {new_post.id} for user '{current_user.username}'")
+
             os.remove(filepath)
             genai.delete_file(gemini_file.name)
             return jsonify({"analysis": analysis, "post_id": new_post.id})
@@ -169,7 +170,16 @@ def analyze_media():
 @app.route('/get_user_profile')
 @login_required
 def get_user_profile():
+    # --- ADDED FOR DEBUGGING ---
+    print(f"\nDEBUG: Fetching profile for user '{current_user.username}'...")
+
     posts = Post.query.filter_by(author=current_user).order_by(Post.id.desc()).all()
+
+    # --- ADDED FOR DEBUGGING ---
+    print(f"DEBUG: Found {len(posts)} posts in the database for this user.")
+    for p in posts:
+        print(f"  - Post ID {p.id}: {p.content[:50]}...") # Print first 50 chars of content
+
     posts_data = [{"id": post.id, "content": post.content, "analysis_result": post.analysis_result} for post in posts]
     return jsonify({"username": current_user.username, "email": current_user.email, "posts": posts_data})
 
@@ -179,7 +189,7 @@ def submit_review():
     data = request.get_json()
     post_id = data.get('post_id')
     rating = data.get('rating')
-    content = data.get('content', '')
+    content = data.get('content', '') # Content is optional
     if not post_id or not rating:
         return jsonify({"error": "Post ID and a rating are required."}), 400
     post = Post.query.get(post_id)
@@ -206,7 +216,20 @@ def get_admin_reviews():
             'original_ai_analysis': review.post.analysis_result
         })
     return jsonify(reviews_data)
-
+# --- NEW: Admin Route to get ALL posts ---
+@app.route('/admin/posts')
+@admin_required
+def get_all_posts():
+    posts = Post.query.order_by(Post.id.desc()).all()
+    posts_data = []
+    for post in posts:
+        posts_data.append({
+            'post_id': post.id,
+            'post_content': post.content,
+            'post_author': post.author.username,
+            'ai_analysis': post.analysis_result
+        })
+    return jsonify(posts_data)
 with app.app_context():
     db.create_all()
 

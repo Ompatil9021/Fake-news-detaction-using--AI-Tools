@@ -17,54 +17,108 @@ async function checkAdminAndSetupProfile() {
 
         // If admin, setup the profile icon and fetch reviews
         setupUserProfile(result.username, result.is_admin);
-        fetchAndDisplayReviews();
+        // This is now cleaner. It just calls the function once.
+        await fetchAndDisplayReviews();
+        await fetchAndDisplayAllPosts(); // Add this line
 
     } catch (error) {
          document.querySelector('main').innerHTML = `<h1>Error</h1><p>Could not connect to the server.</p>`;
     }
 }
+function createSatisfactionChart(reviews) {
+    const ctx = document.getElementById('satisfactionChart').getContext('2d');
+    
+    // Count the ratings
+    const ratings = { 'Good': 0, 'Average': 0, 'Bad': 0 };
+    reviews.forEach(review => {
+        if (ratings.hasOwnProperty(review.review_rating)) {
+            ratings[review.review_rating]++;
+        }
+    });
+
+    // Create the chart
+    new Chart(ctx, {
+        type: 'doughnut', // You can also use 'pie' or 'bar'
+        data: {
+            labels: ['Good', 'Average', 'Bad'],
+            datasets: [{
+                label: 'Review Ratings',
+                data: [ratings.Good, ratings.Average, ratings.Bad],
+                backgroundColor: [
+                    'rgba(40, 167, 69, 0.7)',
+                    'rgba(255, 193, 7, 0.7)',
+                    'rgba(220, 53, 69, 0.7)'
+                ],
+                borderColor: [
+                    '#28a745',
+                    '#ffc107',
+                    '#dc3545'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        color: '#a0a0b0' // Text color for legend
+                    }
+                }
+            }
+        }
+    });
+}
 
 async function fetchAndDisplayReviews() {
+    const container = document.getElementById('reviews-table-container');
     try {
         const response = await fetch('http://localhost:5000/admin/reviews', {
             method: 'GET',
             credentials: 'include',
         });
-        const reviews = await response.json();
-        const container = document.getElementById('reviews-table-container');
 
         if (!response.ok) {
-            container.innerHTML = `<p style="color:red;">Error: ${reviews.error}</p>`;
+            const errorData = await response.json();
+            container.innerHTML = `<p style="color:red;">Error: ${errorData.error}</p>`;
             return;
         }
+
+        const reviews = await response.json();
+        allReviewsData = reviews;
+
+        createSatisfactionChart(reviews); // Create the chart with the data
 
         if (reviews.length === 0) {
             container.innerHTML = '<p>No user reviews have been submitted yet.</p>';
             return;
         }
 
-        // Build the table HTML
         let tableHtml = `
             <table class="admin-table">
                 <thead>
                     <tr>
+                        <th>Rating</th>
+                        <th>Review Comment</th>
                         <th>Reviewed By</th>
-                        <th>Review Content</th>
-                        <th>Original Post By</th>
                         <th>Original Post</th>
+                        <th>Original Author</th>
                         <th>Original AI Analysis</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
-        reviews.forEach(review => {
+        reviews.forEach((review, index) => {
             tableHtml += `
-                <tr>
+                <tr data-index="${index}">
+                    <td><span class="rating-badge rating-${review.review_rating.toLowerCase()}">${review.review_rating}</span></td>
+                    <td>${review.review_content || '<em>No comment</em>'}</td>
                     <td>${review.reviewed_by_user}</td>
-                    <td>${review.review_content}</td>
-                    <td>${review.original_post_author}</td>
                     <td><div class="cell-content">${review.original_post_content}</div></td>
+                    <td>${review.original_post_author}</td>
                     <td><div class="cell-content">${review.original_ai_analysis}</div></td>
                 </tr>
             `;
@@ -73,11 +127,76 @@ async function fetchAndDisplayReviews() {
         tableHtml += '</tbody></table>';
         container.innerHTML = tableHtml;
 
+        setupModal();
+
     } catch (error) {
-        document.getElementById('reviews-table-container').innerHTML = `<p style="color:red;">Failed to fetch reviews.</p>`;
+        container.innerHTML = `<p style="color:red;">Failed to fetch or display reviews.</p>`;
+        console.error("Fetch Error:", error);
     }
 }
+async function fetchAndDisplayAllPosts() {
+    const container = document.getElementById('all-posts-table-container');
+    try {
+        const response = await fetch('http://localhost:5000/admin/posts', {
+            method: 'GET', credentials: 'include',
+        });
+        const posts = await response.json();
 
+        if (!response.ok) {
+            container.innerHTML = `<p style="color:red;">Error: ${posts.error}</p>`;
+            return;
+        }
+        if (posts.length === 0) {
+            container.innerHTML = '<p>No posts have been submitted yet.</p>';
+            return;
+        }
+
+        let tableHtml = `<table class="admin-table"><thead><tr>
+                            <th>Author</th>
+                            <th>Submission Content</th>
+                            <th>AI Analysis</th>
+                        </tr></thead><tbody>`;
+        posts.forEach(post => {
+            tableHtml += `
+                <tr>
+                    <td>${post.post_author}</td>
+                    <td><div class="cell-content">${post.post_content}</div></td>
+                    <td><div class="cell-content">${post.ai_analysis}</div></td>
+                </tr>
+            `;
+        });
+        tableHtml += '</tbody></table>';
+        container.innerHTML = tableHtml;
+
+    } catch (error) {
+        container.innerHTML = `<p style="color:red;">Failed to fetch posts.</p>`;
+    }
+}
+function setupModal() {
+    const modal = document.getElementById('review-modal');
+    const closeButton = document.querySelector('.modal-close-button');
+    const tableContainer = document.getElementById('reviews-table-container');
+
+    if (!modal || !closeButton || !tableContainer) return; // Safety check
+
+    closeButton.addEventListener('click', () => { modal.style.display = 'none'; });
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) { modal.style.display = 'none'; }
+    });
+
+    tableContainer.addEventListener('click', (event) => {
+        const row = event.target.closest('tr');
+        if (!row || !row.dataset.index) return;
+        const reviewIndex = parseInt(row.dataset.index, 10);
+        const reviewData = allReviewsData[reviewIndex];
+        const modalBody = document.getElementById('modal-body');
+        modalBody.innerHTML = `
+            <div class="modal-body-section"><h4>Original Post</h4><pre>${reviewData.original_post_content}</pre></div>
+            <div class="modal-body-section"><h4>Original AI Analysis</h4><pre>${reviewData.original_ai_analysis}</pre></div>
+        `;
+        modal.style.display = 'flex';
+    });
+}
 // This is the same setupUserProfile function from our other JS files
 function setupUserProfile(username, isAdmin) {
     const profileSection = document.getElementById('profile-section');

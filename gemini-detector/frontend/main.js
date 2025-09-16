@@ -1,11 +1,10 @@
-// Main function runs on page load
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch('http://localhost:5000/check_auth', { method: 'GET', credentials: 'include' });
         const result = await response.json();
         if (result.logged_in) {
             document.getElementById('app-container').style.display = 'block';
-            setupUserProfile(result.username, result.is_admin); // Pass is_admin status
+            setupUserProfile(result.username, result.is_admin);
             setupTextAnalysis();
             setupMediaAnalysis();
             setupTabs();
@@ -18,7 +17,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// Tab switching logic (unchanged)
 function setupTabs() {
     const tabLinks = document.querySelectorAll('.tab-link');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -34,7 +32,6 @@ function setupTabs() {
     });
 }
 
-// --- THIS IS THE UPDATED FUNCTION ---
 function setupUserProfile(username, isAdmin) {
     const profileSection = document.getElementById('profile-section');
     const firstLetter = username.charAt(0).toUpperCase();
@@ -42,25 +39,25 @@ function setupUserProfile(username, isAdmin) {
     profileIcon.className = 'profile-icon';
     profileIcon.textContent = firstLetter;
     
-    const dropdown = document.createElement('div');
-    // Build the dropdown HTML
-    let dropdownHtml = `
-        <div class="profile-dropdown">
-            <a href="/profile.html">Profile</a>`;
+    if (isAdmin) {
+        const adminBtnContainer = document.getElementById('admin-button-container');
+        if(adminBtnContainer) {
+            adminBtnContainer.innerHTML = `<a href="/admin/dashboard.html" class="admin-button">Go to Admin Dashboard</a>`;
+        }
+    }
 
-    // If the user is an admin, add the dashboard link
+    const dropdown = document.createElement('div');
+    let dropdownHtml = `<div class="profile-dropdown"><a href="/profile.html">Profile</a>`;
     if (isAdmin) {
         dropdownHtml += `<a href="/admin/dashboard.html">Admin Dashboard</a>`;
     }
-
     dropdownHtml += `<button id="logout-button">Logout</button></div>`;
     dropdown.innerHTML = dropdownHtml;
-
+    
     profileIcon.addEventListener('click', () => {
         const drop = dropdown.querySelector('.profile-dropdown');
         drop.style.display = drop.style.display === 'none' ? 'block' : 'none';
     });
-
     profileSection.appendChild(profileIcon);
     profileSection.appendChild(dropdown);
 
@@ -70,7 +67,6 @@ function setupUserProfile(username, isAdmin) {
     });
 }
 
-// Text and Media analysis functions are unchanged
 function setupTextAnalysis() {
     const analyzeButton = document.getElementById('analyze-text-button');
     const textInput = document.getElementById('text-input');
@@ -94,6 +90,7 @@ function setupTextAnalysis() {
         } catch (error) { resultContainer.innerHTML = `<p style="color:red;">A network error occurred.</p>`; }
     });
 }
+
 function setupMediaAnalysis() {
     const mediaButton = document.getElementById('analyze-media-button');
     const fileInput = document.getElementById('file-input');
@@ -126,38 +123,47 @@ function setupMediaAnalysis() {
         } catch (error) { resultContainer.innerHTML = `<p style="color:red;">A network error occurred.</p>`; }
     });
 }
+
 function showReviewForm(postId, container) {
     const formHtml = `
         <div class="review-form-container">
             <hr>
-            <p>Was this analysis helpful?</p>
-            <textarea id="review-content-${postId}" placeholder="Provide your feedback..."></textarea>
+            <p>Rate this analysis:</p>
+            <div class="review-options" id="rating-${postId}">
+                <input type="radio" id="good-${postId}" name="rating-${postId}" value="Good">
+                <label for="good-${postId}">👍 Good</label>
+                <input type="radio" id="average-${postId}" name="rating-${postId}" value="Average">
+                <label for="average-${postId}">🤔 Average</label>
+                <input type="radio" id="bad-${postId}" name="rating-${postId}" value="Bad">
+                <label for="bad-${postId}">👎 Bad</label>
+            </div>
+            <textarea id="review-content-${postId}" placeholder="Add an optional comment..."></textarea>
             <button id="submit-review-${postId}">Submit Review</button>
             <p id="review-message-${postId}" class="review-message"></p>
         </div>
     `;
     container.insertAdjacentHTML('beforeend', formHtml);
     document.getElementById(`submit-review-${postId}`).addEventListener('click', async () => {
+        const rating = document.querySelector(`input[name="rating-${postId}"]:checked`);
         const content = document.getElementById(`review-content-${postId}`).value;
         const messageEl = document.getElementById(`review-message-${postId}`);
-        if (!content.trim()) {
-            messageEl.textContent = 'Please enter your feedback.';
+
+        if (!rating) {
+            messageEl.textContent = 'Please select a rating.';
             messageEl.style.color = 'red';
             return;
         }
+
         const response = await fetch('http://localhost:5000/submit_review', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ post_id: postId, content: content }),
+            body: JSON.stringify({ post_id: postId, rating: rating.value, content: content }),
             credentials: 'include',
         });
         if (response.ok) {
-            messageEl.textContent = 'Thank you! Your feedback was submitted.';
-            messageEl.style.color = 'green';
-            document.getElementById(`review-content-${postId}`).disabled = true;
-            document.getElementById(`submit-review-${postId}`).disabled = true;
+            container.querySelector('.review-form-container').innerHTML = '<p style="color:green;">Thank you! Your feedback was submitted.</p>';
         } else {
-            messageEl.textContent = 'Failed to submit review. Please try again.';
+            messageEl.textContent = 'Failed to submit review.';
             messageEl.style.color = 'red';
         }
     });

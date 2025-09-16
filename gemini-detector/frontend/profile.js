@@ -87,34 +87,42 @@ function showReviewForm(postId, container) {
     const formHtml = `
         <div class="review-form-container">
             <hr>
-            <p>Was this analysis helpful?</p>
-            <textarea id="review-content-${postId}" placeholder="Provide your feedback..."></textarea>
+            <p>Rate this analysis:</p>
+            <div class="review-options" id="rating-${postId}">
+                <input type="radio" id="good-${postId}" name="rating-${postId}" value="Good">
+                <label for="good-${postId}">👍 Good</label>
+                <input type="radio" id="average-${postId}" name="rating-${postId}" value="Average">
+                <label for="average-${postId}">🤔 Average</label>
+                <input type="radio" id="bad-${postId}" name="rating-${postId}" value="Bad">
+                <label for="bad-${postId}">👎 Bad</label>
+            </div>
+            <textarea id="review-content-${postId}" placeholder="Add an optional comment..."></textarea>
             <button id="submit-review-${postId}">Submit Review</button>
             <p id="review-message-${postId}" class="review-message"></p>
         </div>
     `;
     container.insertAdjacentHTML('beforeend', formHtml);
     document.getElementById(`submit-review-${postId}`).addEventListener('click', async () => {
+        const rating = document.querySelector(`input[name="rating-${postId}"]:checked`);
         const content = document.getElementById(`review-content-${postId}`).value;
         const messageEl = document.getElementById(`review-message-${postId}`);
-        if (!content.trim()) {
-            messageEl.textContent = 'Please enter your feedback.';
+
+        if (!rating) {
+            messageEl.textContent = 'Please select a rating.';
             messageEl.style.color = 'red';
             return;
         }
+
         const response = await fetch('http://localhost:5000/submit_review', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ post_id: postId, content: content }),
+            body: JSON.stringify({ post_id: postId, rating: rating.value, content: content }),
             credentials: 'include',
         });
         if (response.ok) {
-            messageEl.textContent = 'Thank you! Your feedback was submitted.';
-            messageEl.style.color = 'green';
-            document.getElementById(`review-content-${postId}`).disabled = true;
-            document.getElementById(`submit-review-${postId}`).disabled = true;
+            container.querySelector('.review-form-container').innerHTML = '<p style="color:green;">Thank you! Your feedback was submitted.</p>';
         } else {
-            messageEl.textContent = 'Failed to submit review. Please try again.';
+            messageEl.textContent = 'Failed to submit review.';
             messageEl.style.color = 'red';
         }
     });
